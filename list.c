@@ -10,15 +10,37 @@
 #include <sys/time.h>
 #include "main.h"
 
+#define min(a, b) (a < b) ? a : b
+#define max(a, b) (a > b) ? a : b
+
 /* From jobs.c */
 extern int busy_slots;
 extern int max_slots;
 
+/* This is an approach the make the printed table more readable, even if
+ * there are long entries for output file, times, label and command. */
+/* static const int target_table_width = 100; */
 static const int col_width_id = 4;
-static const int col_width_state = 10;
-static const int col_width_output = 20;
-static const int col_width_elevel = 8;
-static const int col_width_times = 14;
+static const int col_width_state = 8;
+static const int col_width_output_max = 24; /* use function */
+static const int col_width_elevel = 4;
+static const int col_width_times = 14; /* < 20, or change code */
+
+static int get_col_width_output()
+{
+    /* Copied from execute.c */
+    const char *outfname = "/o.XXXXXX";
+    const char *tmpdir = getenv("TMPDIR");
+    int path_length;
+    const char *col_title = "Output File";
+
+    if (tmpdir == NULL)
+        tmpdir = "/tmp";
+    path_length = strlen(tmpdir) + strlen(outfname);
+
+    /* At least as big as col_title but smaller than col_width_output_max */
+    return max(min(path_length, col_width_output_max), strlen(col_title));
+}
 
 char * joblistdump_headers()
 {
@@ -46,7 +68,7 @@ char * joblist_headers()
             "%%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%s [run=%%i/%%i]\n",
             col_width_id,
             col_width_state,
-            col_width_output,
+            get_col_width_output(),
             col_width_elevel,
             col_width_times);
 
@@ -54,22 +76,15 @@ char * joblist_headers()
     snprintf(line, 100, format_str,
             "ID",
             "State",
-            "Output",
-            "E-Level",
-            "Times(r/u/s)",
+            "Output File",
+            "Err", /* E-Level */
+            "Times (r/u/s)",
             "Command",
             busy_slots,
             max_slots);
 
     free(format_str);
     return line;
-}
-
-static int max(int a, int b)
-{
-    if (a > b)
-        return a;
-    return b;
 }
 
 static const char * ofilename_shown(const struct Job *p)
@@ -104,18 +119,29 @@ static char * print_noresult(const struct Job *p)
 {
     const char * jobstate;
     const char * output_filename;
+    char * trimmed_filename;
+    const int col_width_output = get_col_width_output();
     int maxlen;
     char * format_str;
     char * line;
     /* 18 chars should suffice for a string like "[int]&& " */
     char dependstr[18] = "";
 
-    jobstate = jstate2string(p->state);
+    jobstate = jstate2string(p->state); /* max. length: 8 */
     output_filename = ofilename_shown(p);
+
+    trimmed_filename = malloc(col_width_output + 1);
+    if (strlen(output_filename) > col_width_output)
+    {
+        strcpy(trimmed_filename, "...");
+        strcat(trimmed_filename + 3,
+            output_filename + strlen(output_filename) - col_width_output + 3);
+    } else
+        strcpy(trimmed_filename, output_filename);
 
     maxlen = col_width_id + 1
            + col_width_state + 1
-           + max(col_width_output, strlen(output_filename)) + 1
+           + col_width_output + 1
            + col_width_elevel + 1
            + col_width_times + 1
            + strlen(p->command) + 20; /* 20 is the margin for errors */
@@ -145,11 +171,11 @@ static char * print_noresult(const struct Job *p)
 
     if (p->label)
     {
-        strcat(format_str, " %s[%s]%s\n");
+        strcat(format_str, " %s[%s] %s\n");
         snprintf(line, maxlen, format_str,
                 p->jobid,
                 jobstate,
-                output_filename,
+                trimmed_filename,
                 "",
                 "",
 		        dependstr,
@@ -162,13 +188,14 @@ static char * print_noresult(const struct Job *p)
         snprintf(line, maxlen, format_str,
                 p->jobid,
                 jobstate,
-                output_filename,
+                trimmed_filename,
                 "",
                 "",
 		        dependstr,
                 p->command);
     }
 
+    free(trimmed_filename);
     free(format_str);
     return line;
 }
@@ -176,19 +203,32 @@ static char * print_noresult(const struct Job *p)
 static char * print_result(const struct Job *p)
 {
     const char * jobstate;
+    const char * output_filename;
+    char * trimmed_filename;
+    const int col_width_output = get_col_width_output();
     int maxlen;
+    char * time_str;
     char * format_str;
     char * line;
-    const char * output_filename;
+
     /* 18 chars should suffice for a string like "[int]&& " */
     char dependstr[18] = "";
 
-    jobstate = jstate2string(p->state);
+    jobstate = jstate2string(p->state); /* max. length: 8 */
     output_filename = ofilename_shown(p);
+
+    trimmed_filename = malloc(col_width_output + 1);
+    if (strlen(output_filename) > col_width_output)
+    {
+        strcpy(trimmed_filename, "...");
+        strcat(trimmed_filename + 3,
+            output_filename + strlen(output_filename) - col_width_output + 3);
+    } else
+        strcpy(trimmed_filename, output_filename);
 
     maxlen = col_width_id + 1
            + col_width_state + 1
-           + max(col_width_output, strlen(output_filename)) + 1
+           + col_width_output + 1
            + col_width_elevel + 1
            + col_width_times + 1
            + strlen(p->command) + 20; /* 20 is the margin for errors */
@@ -208,25 +248,45 @@ static char * print_result(const struct Job *p)
     if (line == NULL)
         error("Malloc for %i failed.\n", maxlen);
 
+    /* Print times beforehand for easy allignment */
+    time_str = malloc(20);
+    snprintf(time_str, 20, "%0.2f/%0.2f/%0.2f",
+            p->result.real_ms,
+            p->result.user_ms,
+            p->result.system_ms);
+
+    /* If times are too long, try again with less trailing decimal places */
+    if (strlen(time_str) > col_width_times)
+        snprintf(time_str, 20, "%0.1f/%0.1f/%0.1f",
+                p->result.real_ms,
+                p->result.user_ms,
+                p->result.system_ms);
+
+    /* If times are still too long, print without trailing decimal places */
+    if (strlen(time_str) > col_width_times)
+        snprintf(time_str, 20, "%0.0f/%0.0f/%0.0f",
+                p->result.real_ms,
+                p->result.user_ms,
+                p->result.system_ms);
+
     format_str = malloc(100);
     snprintf(format_str, 100,
-            "%%-%di %%-%ds %%-%ds %%-%di %%0.2f/%%0.2f/%%0.2f",
+            "%%-%di %%-%ds %%-%ds %%-%di %%-%ds",
             col_width_id,
             col_width_state,
             col_width_output,
-            col_width_elevel);
+            col_width_elevel,
+            col_width_times);
 
     if (p->label)
     {
-        strcat(format_str, " %s[%s]%s\n");
+        strcat(format_str, " %s[%s] %s\n");
         snprintf(line, maxlen, format_str,
                 p->jobid,
                 jobstate,
-                output_filename,
+                trimmed_filename,
                 p->result.errorlevel,
-                p->result.real_ms,
-                p->result.user_ms,
-                p->result.system_ms,
+                time_str,
                 dependstr,
                 p->label,
                 p->command);
@@ -236,15 +296,15 @@ static char * print_result(const struct Job *p)
         snprintf(line, maxlen, format_str,
                 p->jobid,
                 jobstate,
-                output_filename,
+                trimmed_filename,
                 p->result.errorlevel,
-                p->result.real_ms,
-                p->result.user_ms,
-                p->result.system_ms,
+                time_str,
                 dependstr,
                 p->command);
     }
 
+    free(time_str);
+    free(trimmed_filename);
     free(format_str);
     return line;
 }

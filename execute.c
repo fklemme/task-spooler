@@ -148,7 +148,7 @@ static void run_gzip(int fd_out, int fd_in)
 
 static void run_child(int fd_send_filename)
 {
-    char outfname[] = "/ts-out.XXXXXX";
+    char outfname[] = "/o.XXXXXX";
     char errfname[sizeof outfname + 2]; /* .e */
     int namesize;
     int outfd;
