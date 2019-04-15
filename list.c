@@ -14,6 +14,12 @@
 extern int busy_slots;
 extern int max_slots;
 
+static const int col_width_id = 4;
+static const int col_width_state = 10;
+static const int col_width_output = 20;
+static const int col_width_elevel = 8;
+static const int col_width_times = 14;
+
 char * joblistdump_headers()
 {
     char * line;
@@ -32,10 +38,20 @@ char * joblistdump_headers()
 
 char * joblist_headers()
 {
+    char * format_str;
     char * line;
 
+    format_str = malloc(100);
+    snprintf(format_str, 100,
+            "%%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%s [run=%%i/%%i]\n",
+            col_width_id,
+            col_width_state,
+            col_width_output,
+            col_width_elevel,
+            col_width_times);
+
     line = malloc(100);
-    snprintf(line, 100, "%-4s %-10s %-20s %-8s %-14s %s [run=%i/%i]\n",
+    snprintf(line, 100, format_str,
             "ID",
             "State",
             "Output",
@@ -45,6 +61,7 @@ char * joblist_headers()
             busy_slots,
             max_slots);
 
+    free(format_str);
     return line;
 }
 
@@ -88,6 +105,7 @@ static char * print_noresult(const struct Job *p)
     const char * jobstate;
     const char * output_filename;
     int maxlen;
+    char * format_str;
     char * line;
     /* 18 chars should suffice for a string like "[int]&& " */
     char dependstr[18] = "";
@@ -95,8 +113,12 @@ static char * print_noresult(const struct Job *p)
     jobstate = jstate2string(p->state);
     output_filename = ofilename_shown(p);
 
-    maxlen = 4 + 1 + 10 + 1 + max(20, strlen(output_filename)) + 1 + 8 + 1
-        + 14 + 1 + strlen(p->command) + 20; /* 20 is the margin for errors */
+    maxlen = col_width_id + 1
+           + col_width_state + 1
+           + max(col_width_output, strlen(output_filename)) + 1
+           + col_width_elevel + 1
+           + col_width_times + 1
+           + strlen(p->command) + 20; /* 20 is the margin for errors */
 
     if (p->label)
         maxlen += 3 + strlen(p->label);
@@ -113,8 +135,18 @@ static char * print_noresult(const struct Job *p)
     if (line == NULL)
         error("Malloc for %i failed.\n", maxlen);
 
+    format_str = malloc(100);
+    snprintf(format_str, 100, "%%-%di %%-%ds %%-%ds %%-%ds %%%ds",
+            col_width_id,
+            col_width_state,
+            col_width_output,
+            col_width_elevel,
+            col_width_times);
+
     if (p->label)
-        snprintf(line, maxlen, "%-4i %-10s %-20s %-8s %14s %s[%s]%s\n",
+    {
+        strcat(format_str, " %s[%s]%s\n");
+        snprintf(line, maxlen, format_str,
                 p->jobid,
                 jobstate,
                 output_filename,
@@ -123,8 +155,11 @@ static char * print_noresult(const struct Job *p)
 		        dependstr,
                 p->label,
                 p->command);
+    }
     else
-        snprintf(line, maxlen, "%-4i %-10s %-20s %-8s %14s %s%s\n",
+    {
+        strcat(format_str, " %s%s\n");
+        snprintf(line, maxlen, format_str,
                 p->jobid,
                 jobstate,
                 output_filename,
@@ -132,7 +167,9 @@ static char * print_noresult(const struct Job *p)
                 "",
 		        dependstr,
                 p->command);
+    }
 
+    free(format_str);
     return line;
 }
 
@@ -140,6 +177,7 @@ static char * print_result(const struct Job *p)
 {
     const char * jobstate;
     int maxlen;
+    char * format_str;
     char * line;
     const char * output_filename;
     /* 18 chars should suffice for a string like "[int]&& " */
@@ -148,8 +186,12 @@ static char * print_result(const struct Job *p)
     jobstate = jstate2string(p->state);
     output_filename = ofilename_shown(p);
 
-    maxlen = 4 + 1 + 10 + 1 + max(20, strlen(output_filename)) + 1 + 8 + 1
-        + 14 + 1 + strlen(p->command) + 20; /* 20 is the margin for errors */
+    maxlen = col_width_id + 1
+           + col_width_state + 1
+           + max(col_width_output, strlen(output_filename)) + 1
+           + col_width_elevel + 1
+           + col_width_times + 1
+           + strlen(p->command) + 20; /* 20 is the margin for errors */
 
     if (p->label)
         maxlen += 3 + strlen(p->label);
@@ -166,9 +208,18 @@ static char * print_result(const struct Job *p)
     if (line == NULL)
         error("Malloc for %i failed.\n", maxlen);
 
+    format_str = malloc(100);
+    snprintf(format_str, 100,
+            "%%-%di %%-%ds %%-%ds %%-%di %%0.2f/%%0.2f/%%0.2f",
+            col_width_id,
+            col_width_state,
+            col_width_output,
+            col_width_elevel);
+
     if (p->label)
-        snprintf(line, maxlen, "%-4i %-10s %-20s %-8i %0.2f/%0.2f/%0.2f %s[%s]"
-                "%s\n",
+    {
+        strcat(format_str, " %s[%s]%s\n");
+        snprintf(line, maxlen, format_str,
                 p->jobid,
                 jobstate,
                 output_filename,
@@ -179,8 +230,10 @@ static char * print_result(const struct Job *p)
                 dependstr,
                 p->label,
                 p->command);
-    else
-        snprintf(line, maxlen, "%-4i %-10s %-20s %-8i %0.2f/%0.2f/%0.2f %s%s\n",
+    } else
+    {
+        strcat(format_str, " %s%s\n");
+        snprintf(line, maxlen, format_str,
                 p->jobid,
                 jobstate,
                 output_filename,
@@ -190,7 +243,9 @@ static char * print_result(const struct Job *p)
                 p->result.system_ms,
                 dependstr,
                 p->command);
+    }
 
+    free(format_str);
     return line;
 }
 
