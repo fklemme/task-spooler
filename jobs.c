@@ -220,37 +220,36 @@ const char * jstate2string(enum Jobstate s)
 
 void s_list(int s)
 {
-    struct Job *p;
-    char *buffer;
+    const struct Job **job_list;
+    int job_list_size = 0;
+    const struct Job *job;
+    char **table; /* printable table */
+    char **line_ptr; /* current line */
 
-    /* Times:   0.00/0.00/0.00 - 4+4+4+2 = 14*/ 
-    buffer = joblist_headers();
-    send_list_line(s,buffer);
-    free(buffer);
+    job_list = malloc(max_jobs * sizeof(struct Job *));
+    if (job_list == NULL)
+        error("Malloc for %i failed.\n", max_jobs * sizeof(struct Job *));
 
-    /* Show Queued or Running jobs */
-    p = firstjob;
-    while(p != 0)
+    /* Gather all queued or running jobs */
+    for (job = firstjob; job != NULL; job = job->next)
+        if (job->state != HOLDING_CLIENT)
+            job_list[job_list_size++] = job;
+
+    /* Gather all finished jobs */
+    for (job = first_finished_job; job != NULL; job = job->next)
+        job_list[job_list_size++] = job;
+
+    /* Print jobs to list of strings */
+    table = joblist_table(job_list, job_list_size);
+
+    /* Send to client */
+    for (line_ptr = table; *line_ptr != NULL; ++line_ptr)
     {
-        if (p->state != HOLDING_CLIENT)
-        {
-            buffer = joblist_line(p);
-            send_list_line(s,buffer);
-            free(buffer);
-        }
-        p = p->next;
+        send_list_line(s, *line_ptr); /* print ... */
+        free(*line_ptr); /* and free up right away */
     }
-
-    p = first_finished_job;
-
-    /* Show Finished jobs */
-    while(p != 0)
-    {
-        buffer = joblist_line(p);
-        send_list_line(s,buffer);
-        free(buffer);
-        p = p->next;
-    }
+    free(table);
+    free(job_list);
 }
 
 static struct Job * newjobptr()
@@ -1498,6 +1497,8 @@ void dump_notifies_struct(FILE *out)
 
 void joblist_dump(int fd)
 {
+    /* TODO: Update like "s_list()" */
+#if 0
     struct Job *p;
     char *buffer;
 
@@ -1532,4 +1533,5 @@ void joblist_dump(int fd)
         free(buffer);
         p = p->next;
     }
+#endif
 }

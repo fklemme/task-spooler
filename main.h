@@ -300,8 +300,7 @@ void error_msg(const struct msg *m, const char *str, ...);
 void warning_msg(const struct msg *m, const char *str, ...);
 
 /* list.c */
-char * joblist_headers();
-char * joblist_line(const struct Job *p);
+char **joblist_table(const struct Job **job_list, int job_list_size);
 char * joblistdump_torun(const struct Job *p);
 char * joblistdump_headers();
 
