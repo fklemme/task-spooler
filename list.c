@@ -51,7 +51,7 @@ char **joblist_table(const struct Job **job_list, int job_list_size)
     const int table_width = 100;    /* fix */
     const int col_width_id = 4;     /* fix */
     const int col_width_state = 8;  /* fix, jstate2string() -> max length 8 */
-    const int col_width_output_max = 24; /* upper limit */
+    const int col_width_output_max = 30; /* upper limit */
     const int col_width_elevel = 4; /* fix */
     const int col_width_times = 14; /* fix */
     int col_width_command;          /* rest up to table_width, calculated */
