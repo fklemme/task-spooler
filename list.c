@@ -48,14 +48,14 @@ static const char * ofilename_shown(const struct Job *p)
 char **joblist_table(const struct Job **job_list, int job_list_size)
 {
     /* Settings: column widths */
-    const int table_width = 100;    /* fix */
-    const int col_width_id = 4;     /* fix */
+    const int table_width = 100;    /* fix total table width */
+    const int col_width_id = 4;     /* fix column width */
     const int col_width_state = 8;  /* fix, jstate2string() -> max length 8 */
-    const int col_width_output_max = 30; /* upper limit */
-    const int col_width_elevel = 4; /* fix */
-    const int col_width_times = 14; /* fix */
-    int col_width_command;          /* rest up to table_width, calculated */
-    int col_width_output;           /* will be also calculated */
+    const int col_width_output_max = 30; /* upper limit column width */
+    const int col_width_elevel = 4; /* fix column width */
+    const int col_width_times = 14; /* fix column width */
+    int col_width_command; /* rest up to table_width, will be calculated */
+    int col_width_output; /* will be >= header, <= col_width_output_max */
     /* Settings: column names */
     const char *const header_id = "ID";
     const char *const header_state = "State";
@@ -63,26 +63,28 @@ char **joblist_table(const struct Job **job_list, int job_list_size)
     const char *const header_elevel = "Err"; /* short to save space */
     const char *const header_times = "Times (r/u/s)";
     const char *const header_command_template = "Command [run=%d/%d]";
-    char header_command[30]; /* rought estimation, enough */
+    char header_command[30]; /* 30 is rought estimation, enough */
     /* Other variables */
     const struct Job **job_pptr; /* job list iterator */
     const struct Job **const job_list_end = job_list + job_list_size;
-    const struct Job *job_ptr; /* "current job pointer" in loop */
-    int filepath_size = 0;
-    int max_filepath_size = 0;
+    const struct Job *job_ptr; /* "current job pointer", used in loop */
+    int filepath_size;
+    int max_filepath_size;
     char **table; /* printable table, result of this function */
     int line_count = 0;
-    char *format_str; /* store format for printf */
-    char *output_str = malloc(col_width_output_max + 1); /* upper limit */
+    char *format_str; /* store format for printf, reused multiple times */
+    char *output_str; /* initialize later when "col_width_output" is set */
     char elevel_str[10]; /* should be more than sufficient to render number */
-    char *times_str = malloc(col_width_times + 11); /* space to compare */
-    char depend_str[18]; /* 18 should suffice for a string like "[int]&& " */
+    char *times_str = malloc(col_width_times + 10); /* space to compare */
+    char depend_str[18]; /* should be sufficient for string like "[int]&& " */
     char *command_str; /* use malloc, might be long */
 
-    if (output_str == NULL || times_str == NULL)
-        error("Malloc failed.\n"); /* used malloc because of ISO C90 */
+    /* Short output_str and times_str can not be arrays because of ISO C90 */
+    if (times_str == NULL)
+        error("Malloc for %i failed.\n", col_width_times + 11);
 
     /* Find suitable size for "col_width_output" */
+    max_filepath_size = strlen(header_output); /* header width as minimum */
     for (job_pptr = job_list; job_pptr != job_list_end; ++job_pptr)
     {
         filepath_size = strlen(ofilename_shown(*job_pptr));
@@ -100,6 +102,10 @@ char **joblist_table(const struct Job **job_list, int job_list_size)
 
     snprintf(header_command, 30, header_command_template, busy_slots, max_slots);
 
+    output_str = malloc(col_width_output + 1);
+    if (output_str == NULL)
+        error("Malloc for %i failed.\n", col_width_output + 1);
+
     /* Estimate header plus two lines for each job (worst case) */
     table = malloc((1 + job_list_size * 2) * sizeof(char *));
     if (table == NULL)
@@ -114,36 +120,36 @@ char **joblist_table(const struct Job **job_list, int job_list_size)
         col_width_id, col_width_state, col_width_output,
         col_width_elevel, col_width_times); /* no limit for "command" */
 
-    /* Allocate memory, assume upper limit of "table_width" + 20 chars */
-    table[line_count] = malloc(table_width + 20);
+    /* Allocate memory, upper limit is "table_width" + 2 ("\n\0") */
+    table[line_count] = malloc(table_width + 2);
     if (table[line_count] == NULL)
-        error("Malloc for %i failed.\n", table_width + 20);
+        error("Malloc for %i failed.\n", table_width + 2);
 
     /* Print header line */
-    snprintf(table[line_count], table_width + 20, format_str,
+    snprintf(table[line_count], table_width + 2, format_str,
         header_id, header_state, header_output,
         header_elevel, header_times, header_command);
     ++line_count;
 
     /* --- Print jobs --- */
-    command_str = malloc(table_width + 10); /* space to compare length */
+    command_str = malloc(table_width + 1); /* worst case if on extra line */
     if (command_str == NULL)
-        error("Malloc for %i failed.\n", table_width + 10);
+        error("Malloc for %i failed.\n", table_width + 1);
 
     for (job_pptr = job_list; job_pptr != job_list_end; ++job_pptr)
     {
         job_ptr = *job_pptr; /* current job pointer */
 
-        /* Allocate memory, assume upper limit of "table_width" + 20 chars */
-        table[line_count] = malloc(table_width + 20);
+        /* Allocate memory, upper limit is "table_width" + 2 ("\n\0") */
+        table[line_count] = malloc(table_width + 2);
         if (table[line_count] == NULL)
-            error("Malloc for %i failed.\n", table_width + 20);
+            error("Malloc for %i failed.\n", table_width + 2);
 
-        /* Prepare output string, trim if necessary */
+        /* Prepare "output" string, trim if necessary */
         filepath_size = strlen(ofilename_shown(job_ptr));
         if (filepath_size > col_width_output)
-            snprintf(output_str, col_width_output, "...%s",
-                ofilename_shown(job_ptr) + filepath_size - col_width_output + 3);
+            snprintf(output_str, col_width_output + 1, "[...]%s",
+                ofilename_shown(job_ptr) + filepath_size - col_width_output + 5);
         else
             strcpy(output_str, ofilename_shown(job_ptr));
 
@@ -186,14 +192,14 @@ char **joblist_table(const struct Job **job_list, int job_list_size)
 
         /* Prepare command string */
         if (job_ptr->label)
-            snprintf(command_str, table_width + 10, "%s[%s] %s",
+            snprintf(command_str, table_width + 1, "%s[%s] %s",
                 depend_str, job_ptr->label, job_ptr->command);
         else
-            snprintf(command_str, table_width + 10, "%s%s",
+            snprintf(command_str, table_width + 1, "%s%s",
                 depend_str, job_ptr->command);
 
         /* Print line */
-        if (strlen(command_str) <= col_width_command) /* all in one line */
+        if (strlen(command_str) <= col_width_command) /* -> all in one line */
         {
             /* Prepare format string */
             snprintf(format_str, 100, "%%-%dd %%-%ds %%-%ds %%-%ds %%-%ds %%s\n",
@@ -201,7 +207,7 @@ char **joblist_table(const struct Job **job_list, int job_list_size)
                 col_width_times); /* no explicit limit for "command" */
 
             /* Print line */
-            snprintf(table[line_count], table_width + 20, format_str,
+            snprintf(table[line_count], table_width + 2, format_str,
                 job_ptr->jobid, jstate2string(job_ptr->state),
                 output_str, elevel_str, times_str, command_str);
             ++line_count;
@@ -213,15 +219,15 @@ char **joblist_table(const struct Job **job_list, int job_list_size)
                 col_width_times); /* no explicit limit for "command" */
 
             /* Print first line */
-            snprintf(table[line_count], table_width + 20, format_str,
+            snprintf(table[line_count], table_width + 2, format_str,
                 job_ptr->jobid, jstate2string(job_ptr->state),
                 output_str, elevel_str, times_str, "(next line)");
             ++line_count;
 
-            /* Again, allocate memory for extra line... */
-            table[line_count] = malloc(table_width + 20);
+            /* Again, allocate memory for extra (command) line... */
+            table[line_count] = malloc(table_width + 2);
             if (table[line_count] == NULL)
-                error("Malloc for %i failed.\n", table_width + 20);
+                error("Malloc for %i failed.\n", table_width + 2);
 
             /* Trim command_str, if it's still too long */
             /* Also consider indention of "col_width_id + 1" */
@@ -230,18 +236,19 @@ char **joblist_table(const struct Job **job_list, int job_list_size)
 
             /* Print second (command) line */
             snprintf(format_str, 100, "%%-%ds %%s\n", col_width_id);
-            snprintf(table[line_count], table_width + 20, format_str,
+            snprintf(table[line_count], table_width + 2, format_str,
                 /* indention string: */ "", command_str);
             ++line_count;
         }
     }
+    table[line_count] = NULL; /* indicate end */
 
-    /* --- done --- */
+    /* --- Clean up --- */
     free(format_str);
     free(output_str); /* used malloc because of ISO C90 */
     free(times_str); /* used malloc because of ISO C90 */
     free(command_str);
-    table[line_count] = NULL; /* indicate end */
+
     return table;
 }
 
