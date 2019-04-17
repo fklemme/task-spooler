@@ -1497,41 +1497,50 @@ void dump_notifies_struct(FILE *out)
 
 void joblist_dump(int fd)
 {
-    /* TODO: Update like "s_list()" */
-#if 0
-    struct Job *p;
+    /* Make use of implementations for s_list() */
+    const struct Job **job_list;
+    int job_list_size = 0;
+    const struct Job *job;
+    char **table; /* printable table */
+    char **line_ptr; /* current line */
     char *buffer;
 
     buffer = joblistdump_headers();
-    write(fd,buffer, strlen(buffer));
+    write(fd, buffer, strlen(buffer));
     free(buffer);
 
-    /* We reuse the headers from the list */
-    buffer = joblist_headers();
-    write(fd, "# ", 2);
-    write(fd, buffer, strlen(buffer));
+    job_list = malloc(max_jobs * sizeof(struct Job *));
+    if (job_list == NULL)
+        error("Malloc for %i failed.\n", max_jobs * sizeof(struct Job *));
 
-    /* Show Finished jobs */
-    p = first_finished_job;
-    while(p != 0)
+    /* Gather all finished jobs */
+    for (job = first_finished_job; job != NULL; job = job->next)
+        job_list[job_list_size++] = job;
+
+    /* Write to file with leading "#", including header */
+    table = joblist_table(job_list, job_list_size);
+    for (line_ptr = table; *line_ptr != NULL; ++line_ptr)
     {
-        buffer = joblist_line(p);
         write(fd, "# ", 2);
-        write(fd,buffer, strlen(buffer));
-        free(buffer);
-        p = p->next;
+        write(fd, *line_ptr, strlen(*line_ptr));
+        free(*line_ptr);
     }
+    free(table);
 
-    write(fd, "\n", 1);
+    write(fd, "\n", 1); /* extra line break */
+    job_list_size = 0; /* reset job list */
 
-    /* Show Queued or Running jobs */
-    p = firstjob;
-    while(p != 0)
+    /* Gather all queued or running jobs */
+    for (job = firstjob; job != NULL; job = job->next)
+        job_list[job_list_size++] = job;
+
+    /* Again, write to file but without header */
+    table = joblist_table(job_list, job_list_size);
+    for (line_ptr = table + 1; *line_ptr != NULL; ++line_ptr)
     {
-        buffer = joblistdump_torun(p);
-        write(fd,buffer,strlen(buffer));
-        free(buffer);
-        p = p->next;
+        write(fd, *line_ptr, strlen(*line_ptr));
+        free(*line_ptr);
     }
-#endif
+    free(table);
+    free(job_list);
 }
